@@ -2,6 +2,14 @@
 
 ## 1. System Design
 
+**Core user actions**
+
+Before drawing anything I wrote down the three things a pet owner actually needs to do in the app:
+
+1. **Add a pet** to their profile (name, species, age) so tasks have somebody to belong to.
+2. **Schedule a care task** for a pet: what it is, what time, how long it takes, how important it is, and whether it repeats (once / daily / weekly).
+3. **See today's schedule** across all pets in time order, with warnings when two tasks collide, and mark tasks done so repeating ones roll forward to the next day or week.
+
 **a. Initial design**
 
 - Briefly describe your initial UML design.
