@@ -34,6 +34,10 @@ Before drawing anything I wrote down the three things a pet owner actually needs
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
 
+Conflict detection only looks at one calendar day at a time and treats every task as starting exactly at its listed time and running exactly `duration_minutes`. A 30 minute walk at 18:30 and a vet visit at 18:45 get flagged, which is what I want, but a task at 23:50 that runs 20 minutes never gets compared with 00:05 the next day, and the scheduler has no idea that "feed Luna" and "feed Mochi" at the same time are actually fine because they take ten seconds each. I also flag conflicts for different pets, not just the same pet, since one person is doing all of it.
+
+I think that's reasonable for this scenario. The owner is a single human, so two overlapping blocks really are a problem no matter which pet they belong to. Midnight-crossing tasks are rare for pet care, and making the check smarter (travel time, tasks that can run in parallel) would mean adding attributes the spec never asked for. The warning is advisory anyway, nothing gets blocked, so a false positive costs the user one glance.
+
 ---
 
 ## 3. AI Collaboration

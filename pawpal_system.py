@@ -132,6 +132,57 @@ class Scheduler:
         day = day or date.today()
         return [t for t in self.get_all_tasks() if t.due_date == day and not t.completed]
 
+    # --- sorting --------------------------------------------------------------
+
+    def sort_by_time(self, tasks=None):
+        """Return tasks ordered by date then clock time (earliest first). Leaves the input alone."""
+        tasks = self.get_all_tasks() if tasks is None else tasks
+        return sorted(tasks, key=lambda t: (t.due_date, t.start_minutes()))
+
+    def sort_by_priority(self, tasks=None):
+        """Return tasks ordered high -> medium -> low, and by time inside each priority."""
+        tasks = self.get_all_tasks() if tasks is None else tasks
+        return sorted(tasks, key=lambda t: (PRIORITY_ORDER[t.priority], t.due_date, t.start_minutes()))
+
+    # --- filtering ------------------------------------------------------------
+
+    def filter_by_pet(self, pet_name, tasks=None):
+        """Only the tasks that belong to the named pet (case-insensitive)."""
+        tasks = self.get_all_tasks() if tasks is None else tasks
+        return [t for t in tasks if t.pet_name.lower() == pet_name.lower()]
+
+    def filter_by_status(self, completed, tasks=None):
+        """Only completed tasks (True) or only pending tasks (False)."""
+        tasks = self.get_all_tasks() if tasks is None else tasks
+        return [t for t in tasks if t.completed == completed]
+
+    def filter_by_priority(self, priority, tasks=None):
+        """Only the tasks at the given priority level."""
+        tasks = self.get_all_tasks() if tasks is None else tasks
+        return [t for t in tasks if t.priority == priority.lower()]
+
+    # --- conflicts ------------------------------------------------------------
+
+    def detect_conflicts(self, day=None):
+        """Return a warning string for every pair of pending tasks on `day` whose time
+        blocks overlap. Two tasks overlap when one starts before the other ends.
+        Returns an empty list when the day is clean; never raises."""
+        tasks = self.sort_by_time(self.todays_schedule(day))
+        warnings = []
+        for i, first in enumerate(tasks):
+            for second in tasks[i + 1:]:
+                if second.start_minutes() >= first.end_minutes():
+                    break  # sorted by time, so nothing later can overlap `first`
+                who = (f"{first.pet_name}'s" if first.pet_name == second.pet_name
+                       else f"{first.pet_name}'s and {second.pet_name}'s")
+                warnings.append(
+                    f"⚠️ {first.time}: {who} '{first.description}' ({first.duration_minutes} min) "
+                    f"overlaps '{second.description}' at {second.time}"
+                )
+        return warnings
+
+    # --- completion + recurrence ------------------------------------------------
+
     def mark_task_complete(self, task):
         """Complete a task through its pet so recurrence is handled in one place."""
         pet = self.owner.get_pet(task.pet_name)
