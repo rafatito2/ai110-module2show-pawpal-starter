@@ -62,18 +62,27 @@ Today's schedule (as entered)
 ## 🧪 Testing PawPal+
 
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest          # run the suite
+python -m pytest -v       # one line per test
 ```
+
+`tests/test_pawpal.py` covers, in order:
+
+- **Task**: `mark_complete()` flips status; `HH:MM` gets normalised; bad times, priorities and frequencies raise `ValueError` instead of silently breaking sorting later.
+- **Pet / Owner**: adding a task increases the pet's count and stamps `pet_name`; an owner's `all_tasks()` spans every pet; `get_pet()` is case-insensitive and returns `None` when missing.
+- **Sorting**: chronological order across pets, date ordered before clock time, priority order high → low, and sorting never mutates the pets' lists.
+- **Filtering**: by pet, by completion status, and `todays_schedule()` ignoring other days and finished tasks.
+- **Recurrence**: completing a daily task creates tomorrow's copy on the same pet, weekly adds 7 days, one-off creates nothing.
+- **Conflicts**: identical times across pets, overlapping durations with different start times, back-to-back tasks are *not* a conflict, completed tasks are ignored, and an owner with no pets returns empty results everywhere.
 
 Sample test output:
 
 ```
-# Paste your pytest output here
+.........................                                                [100%]
+25 passed in 0.01s
 ```
+
+**Confidence level: ★★★★☆ (4/5).** Every behaviour the demo relies on has a test, including the edge cases that bit me while writing it (back-to-back vs overlapping). The missing star is for things I know are untested: tasks that cross midnight, and the Streamlit layer itself, which I only checked by hand in the browser.
 
 ## 📐 Smarter Scheduling
 
