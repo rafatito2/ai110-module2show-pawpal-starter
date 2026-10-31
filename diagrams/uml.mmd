@@ -1,5 +1,5 @@
 classDiagram
-    %% PawPal+ first draft (Phase 1). See uml_final.mmd for the version that matches the code.
+    %% PawPal+ final design. Matches pawpal_system.py.
 
     class Owner {
         +str name
@@ -7,6 +7,10 @@ classDiagram
         +add_pet(pet) Pet
         +get_pet(name) Pet
         +all_tasks() list~Task~
+        +to_dict() dict
+        +from_dict(data) Owner
+        +save_to_json(path) str
+        +load_from_json(path) Owner
     }
 
     class Pet {
@@ -17,32 +21,46 @@ classDiagram
         +add_task(task) Task
         +list_tasks() list~Task~
         +pending_tasks() list~Task~
+        +remove_task(task)
         +complete_task(task) Task
+        +to_dict() dict
+        +from_dict(data) Pet
     }
 
     class Task {
         +str description
         +str time
-        +date due_date
         +int duration_minutes
         +str priority
         +str frequency
+        +date due_date
         +bool completed
         +str pet_name
         +mark_complete()
+        +start_minutes() int
+        +end_minutes() int
         +next_occurrence() Task
+        +to_dict() dict
+        +from_dict(data) Task
     }
 
     class Scheduler {
         +Owner owner
         +get_all_tasks() list~Task~
+        +todays_schedule(day) list~Task~
         +sort_by_time(tasks) list~Task~
-        +filter_by_pet(name) list~Task~
-        +filter_by_status(completed) list~Task~
-        +detect_conflicts() list~str~
+        +sort_by_priority(tasks) list~Task~
+        +filter_by_pet(name, tasks) list~Task~
+        +filter_by_status(completed, tasks) list~Task~
+        +filter_by_priority(priority, tasks) list~Task~
+        +detect_conflicts(day) list~str~
+        +next_available_slot(duration, day) str
+        +build_daily_plan(available_minutes, day) dict
         +mark_task_complete(task) Task
     }
 
     Owner "1" o-- "*" Pet : owns
     Pet "1" o-- "*" Task : has
-    Scheduler --> Owner : reads pets and tasks
+    Scheduler --> Owner : reads all pets' tasks
+    Scheduler ..> Pet : delegates complete_task
+    Task ..> Task : next_occurrence() creates copy
