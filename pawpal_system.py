@@ -8,7 +8,8 @@ Classes:
   and handles recurring tasks.
 """
 
-from dataclasses import dataclass, field, replace
+import json
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, timedelta
 
 PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
@@ -60,6 +61,19 @@ class Task:
             return replace(self, due_date=self.due_date + timedelta(weeks=1), completed=False)
         return None
 
+    def to_dict(self):
+        """Plain-dict version of the task so it can be written to JSON."""
+        data = asdict(self)
+        data["due_date"] = self.due_date.isoformat()
+        return data
+
+    @classmethod
+    def from_dict(cls, data):
+        """Rebuild a Task from the dict produced by to_dict()."""
+        data = dict(data)
+        data["due_date"] = date.fromisoformat(data["due_date"])
+        return cls(**data)
+
 
 @dataclass
 class Pet:
@@ -94,6 +108,19 @@ class Pet:
             self.add_task(follow_up)
         return follow_up
 
+    def to_dict(self):
+        """Plain-dict version of the pet and its tasks."""
+        return {"name": self.name, "species": self.species, "age": self.age,
+                "tasks": [t.to_dict() for t in self.tasks]}
+
+    @classmethod
+    def from_dict(cls, data):
+        """Rebuild a Pet (and its tasks) from the dict produced by to_dict()."""
+        pet = cls(data["name"], data.get("species", "dog"), data.get("age", 0))
+        for task_data in data.get("tasks", []):
+            pet.add_task(Task.from_dict(task_data))
+        return pet
+
 
 @dataclass
 class Owner:
@@ -115,6 +142,32 @@ class Owner:
     def all_tasks(self):
         """Every task across every pet."""
         return [task for pet in self.pets for task in pet.tasks]
+
+    # --- persistence ------------------------------------------------------------
+
+    def to_dict(self):
+        """Plain-dict version of the owner, pets and tasks."""
+        return {"name": self.name, "pets": [p.to_dict() for p in self.pets]}
+
+    @classmethod
+    def from_dict(cls, data):
+        """Rebuild an Owner tree from the dict produced by to_dict()."""
+        owner = cls(data["name"])
+        for pet_data in data.get("pets", []):
+            owner.add_pet(Pet.from_dict(pet_data))
+        return owner
+
+    def save_to_json(self, path="data.json"):
+        """Write the whole owner/pet/task tree to a JSON file."""
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(self.to_dict(), handle, indent=2)
+        return path
+
+    @classmethod
+    def load_from_json(cls, path="data.json"):
+        """Read an owner back from a JSON file written by save_to_json()."""
+        with open(path, encoding="utf-8") as handle:
+            return cls.from_dict(json.load(handle))
 
 
 class Scheduler:
@@ -180,6 +233,55 @@ class Scheduler:
                     f"overlaps '{second.description}' at {second.time}"
                 )
         return warnings
+
+    # --- planning ---------------------------------------------------------------
+
+    def next_available_slot(self, duration_minutes, day=None, start="08:00", end="21:00", step=15):
+        """Earliest "HH:MM" on `day` where a task of `duration_minutes` fits without overlapping
+        any pending task for any pet. Candidates move in `step` minute increments between
+        `start` and `end`. Returns None when the day is full."""
+        busy = [(t.start_minutes(), t.end_minutes()) for t in self.todays_schedule(day)]
+        window_start = Task("probe", start).start_minutes()
+        window_end = Task("probe", end).start_minutes()
+        candidate = window_start
+        while candidate + duration_minutes <= window_end:
+            candidate_end = candidate + duration_minutes
+            if all(candidate_end <= b_start or candidate >= b_end for b_start, b_end in busy):
+                return f"{candidate // 60:02d}:{candidate % 60:02d}"
+            candidate += step
+        return None
+
+    def build_daily_plan(self, available_minutes, day=None):
+        """Pick which pending tasks fit into `available_minutes` on `day`.
+
+        Greedy by priority (high first), then by time inside the same priority. A task is
+        skipped when it would push the total over budget or when its time block overlaps a
+        task already in the plan. Returns a dict with the chosen tasks in time order,
+        the skipped tasks, minutes used, and one reason string per task."""
+        chosen, skipped, reasons, used = [], [], {}, 0
+        for task in self.sort_by_priority(self.todays_schedule(day)):
+            key = f"{task.pet_name}: {task.description}"
+            clash = next((c for c in chosen
+                          if task.start_minutes() < c.end_minutes() and c.start_minutes() < task.end_minutes()),
+                         None)
+            if used + task.duration_minutes > available_minutes:
+                skipped.append(task)
+                reasons[key] = (f"skipped: needs {task.duration_minutes} min but only "
+                                f"{available_minutes - used} min left")
+            elif clash is not None:
+                skipped.append(task)
+                reasons[key] = f"skipped: overlaps '{clash.description}' at {clash.time}"
+            else:
+                chosen.append(task)
+                used += task.duration_minutes
+                reasons[key] = f"kept: {task.priority} priority, {task.duration_minutes} min, fits at {task.time}"
+        return {
+            "plan": self.sort_by_time(chosen),
+            "skipped": skipped,
+            "minutes_used": used,
+            "minutes_available": available_minutes,
+            "reasons": reasons,
+        }
 
     # --- completion + recurrence ------------------------------------------------
 

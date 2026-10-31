@@ -60,6 +60,28 @@ def main():
         print(f"  ✅ {task.pet_name}: {task.description} done -> next on {follow_up.due_date:%a %b %d}")
 
     print_schedule("Still pending today", scheduler.sort_by_time(scheduler.todays_schedule()))
+
+    print("\nNext free slot for a 20 min grooming session")
+    print("---------------------------------------------")
+    slot = scheduler.next_available_slot(20)
+    print(f"  📅 earliest start: {slot}")
+
+    budget = 45
+    plan = scheduler.build_daily_plan(budget)
+    print(f"\nDaily plan with only {budget} minutes available")
+    print("-" * 44)
+    for t in plan["plan"]:
+        print(f"  ✅ {t.time}  {t.pet_name:<8} {t.description:<22} {t.duration_minutes:>3} min  "
+              f"{PRIORITY_ICON[t.priority]} {t.priority}")
+    print(f"  ⏱️  {plan['minutes_used']} of {plan['minutes_available']} min used")
+    print("  Why:")
+    for key, why in plan["reasons"].items():
+        print(f"    • {key} -> {why}")
+
+    path = owner.save_to_json("data.json")
+    reloaded = Owner.load_from_json(path)
+    print(f"\nPersistence: saved to {path} and reloaded {reloaded.name} with "
+          f"{len(reloaded.pets)} pets / {len(reloaded.all_tasks())} tasks")
     print_schedule("Completed", scheduler.filter_by_status(True))
     upcoming = [t for t in scheduler.sort_by_time() if t.due_date > today]
     print_schedule("Upcoming (auto-created by recurrence)", upcoming)

@@ -200,3 +200,75 @@ def test_empty_owner_has_no_conflicts_and_empty_schedule():
     assert scheduler.detect_conflicts(TODAY) == []
     assert scheduler.todays_schedule(TODAY) == []
     assert scheduler.sort_by_time() == []
+
+
+# --- Stretch: next available slot -----------------------------------------------
+
+def test_next_available_slot_skips_busy_blocks():
+    owner = Owner("O")
+    pet = owner.add_pet(Pet("Mochi"))
+    pet.add_task(Task("Walk", "08:00", 30, due_date=TODAY))
+    pet.add_task(Task("Breakfast", "08:30", 15, due_date=TODAY))
+    assert Scheduler(owner).next_available_slot(20, TODAY) == "08:45"
+
+
+def test_next_available_slot_uses_gap_between_tasks_when_it_fits():
+    owner = Owner("O")
+    pet = owner.add_pet(Pet("Mochi"))
+    pet.add_task(Task("Walk", "08:00", 30, due_date=TODAY))
+    pet.add_task(Task("Pill", "09:00", 5, due_date=TODAY))
+    # 08:30-09:00 is a 30 min gap, so a 20 min task fits at 08:30.
+    assert Scheduler(owner).next_available_slot(20, TODAY) == "08:30"
+    # A 45 min task does not fit in the gap and lands after the pill, on the next 15 min step.
+    assert Scheduler(owner).next_available_slot(45, TODAY) == "09:15"
+
+
+def test_next_available_slot_returns_none_when_day_is_full():
+    owner = Owner("O")
+    owner.add_pet(Pet("Mochi")).add_task(Task("All day", "08:00", 13 * 60, due_date=TODAY))
+    assert Scheduler(owner).next_available_slot(15, TODAY) is None
+
+
+# --- Stretch: daily plan with a time budget --------------------------------------
+
+def test_daily_plan_prefers_high_priority_within_budget():
+    owner = Owner("O")
+    pet = owner.add_pet(Pet("Mochi"))
+    pet.add_task(Task("Long low", "09:00", 60, "low", due_date=TODAY))
+    pet.add_task(Task("Short high", "10:00", 10, "high", due_date=TODAY))
+    pet.add_task(Task("Medium", "11:00", 20, "medium", due_date=TODAY))
+    plan = Scheduler(owner).build_daily_plan(30, TODAY)
+    assert [t.description for t in plan["plan"]] == ["Short high", "Medium"]
+    assert [t.description for t in plan["skipped"]] == ["Long low"]
+    assert plan["minutes_used"] == 30
+    assert "only" in plan["reasons"]["Mochi: Long low"]
+
+
+def test_daily_plan_skips_overlapping_task_and_explains_why():
+    owner = Owner("O")
+    owner.add_pet(Pet("A")).add_task(Task("Walk A", "08:00", 30, "high", due_date=TODAY))
+    owner.add_pet(Pet("B")).add_task(Task("Walk B", "08:15", 30, "medium", due_date=TODAY))
+    plan = Scheduler(owner).build_daily_plan(120, TODAY)
+    assert [t.description for t in plan["plan"]] == ["Walk A"]
+    assert plan["reasons"]["B: Walk B"].startswith("skipped: overlaps")
+
+
+def test_daily_plan_is_returned_in_time_order_even_though_chosen_by_priority():
+    owner = build_owner()
+    plan = Scheduler(owner).build_daily_plan(240, TODAY)
+    times = [t.time for t in plan["plan"]]
+    assert times == sorted(times)
+    assert plan["skipped"] == []
+
+
+# --- Stretch: persistence ----------------------------------------------------------
+
+def test_save_and_load_round_trip(tmp_path):
+    owner = build_owner()
+    Scheduler(owner).mark_task_complete(owner.all_tasks()[0])  # one completed + one recurrence
+    path = owner.save_to_json(tmp_path / "data.json")
+    loaded = Owner.load_from_json(path)
+    assert loaded.name == owner.name
+    assert [p.name for p in loaded.pets] == ["Mochi", "Luna"]
+    assert [t.to_dict() for t in loaded.all_tasks()] == [t.to_dict() for t in owner.all_tasks()]
+    assert isinstance(loaded.all_tasks()[0].due_date, date)
